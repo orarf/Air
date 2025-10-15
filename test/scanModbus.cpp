@@ -66,7 +66,7 @@ bool scanModbusDevice(uint8_t &foundId, uint32_t &foundBaud, uint32_t *baudRates
       } else {
         Serial.println("Not Found");
       }
-      vTaskDelay(500 / portTICK_PERIOD_MS);
+      vTaskDelay(200 / portTICK_PERIOD_MS);
     }
   }
   Serial.println("\n========== Not Found Device Modbus ==========\n");
@@ -80,12 +80,12 @@ void TaskModbus(void *pvParameters) {
   int baudCount = 0;
 
   for (;;) {
-    uint16_t buf[7];
-    ModbusRTUMasterError result = modbus.readHoldingRegisters(slaveId, 0x0000, buf, 7);
+    uint16_t buf[10];
+    ModbusRTUMasterError result = modbus.readHoldingRegisters(slaveId, 0x0010, buf, 10);
 
     if (result == MODBUS_RTU_MASTER_SUCCESS) {
       Serial.println("Read Holding Registers success:");
-      for (int i = 0; i < 7; i++) {
+      for (int i = 0; i < 10; i++) {
         Serial.print("Register ");
         Serial.print(i);
         Serial.print(": ");
@@ -117,7 +117,7 @@ void TaskModbus(void *pvParameters) {
 }
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(9600);
 
   pinMode(MAX485_DE, OUTPUT);
   pinMode(MAX485_RE, OUTPUT);

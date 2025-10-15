@@ -140,14 +140,13 @@ void sentder(TimerHandle_t xTimer)
 
     float temperature = rawTemp / 10.0;
     float humidity = rawHum / 10.0;
-    float light = rawLight * 1.0;
 
     tbManager->sendTelemetryData("Temperature", temperature);
     tbManager->sendTelemetryData("Humidity", humidity);
-    tbManager->sendTelemetryData("Light", light);
+    tbManager->sendTelemetryData("Light", isLight);
     tbManager->sendAttributeData("Temperature", temperature);
     tbManager->sendAttributeData("Humidity", humidity);
-    tbManager->sendAttributeData("Light", light);
+    tbManager->sendAttributeData("Light", isLight);
 
     tbManager->sendTelemetryData("Nitrogen", nitrogen);
     tbManager->sendTelemetryData("Phosphorus", phosphorus);
@@ -173,9 +172,9 @@ void reader(void *pvParameters)
   ModbusRTUMasterError errN = modbus.readHoldingRegisters(slaveId, 13, &_nitrogen, 1);
   ModbusRTUMasterError errP = modbus.readHoldingRegisters(slaveId, 15, &_phosphorus, 1);
   ModbusRTUMasterError errK = modbus.readHoldingRegisters(slaveId, 16, &_potassium, 1);
-  ModbusRTUMasterError errTemp = modbus.readHoldingRegisters(slaveId2, 1, &_rawTemp, 1);   // register 1 = temp
+  ModbusRTUMasterError errTemp = modbus.readHoldingRegisters(slaveId2, 501, &_rawTemp, 1);   // register 1 = temp
   ModbusRTUMasterError errLight = modbus.readHoldingRegisters(slaveId, 506,_buf, 2); // register 2 = light
-  ModbusRTUMasterError errHum = modbus.readHoldingRegisters(slaveId2, 0, &_rawHum, 1);     // register 3 = humidity
+  ModbusRTUMasterError errHum = modbus.readHoldingRegisters(slaveId2, 500, &_rawHum, 1);     // register 3 = humidity
   postTransmission();
  if (errTemp == MODBUS_RTU_MASTER_SUCCESS && errLight == MODBUS_RTU_MASTER_SUCCESS && errHum == MODBUS_RTU_MASTER_SUCCESS)
   {
