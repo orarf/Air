@@ -14,7 +14,7 @@
 #define SOIL_PIN 34
 
 
-Preferences prefs;
+// Preferences prefs;
 SemaphoreHandle_t xMutex;    // สร้าง Mutex
 bool ledShouldBeOn1 = false; // ตัวแปรที่ใช้ร่วมกัน
 bool ledShouldBeOn2 = false;
@@ -23,8 +23,9 @@ bool ledShouldBeOn4 = false;
 HardwareSerial RS485(2); // Serial2 (RX=16, TX=17)
 // ModbusRTUMaster modbus(RS485, MAX485_DE, MAX485_RE);
 ModbusRTUMaster modbus(RS485);
-uint8_t slaveId = 3;
-uint8_t slaveId2 = 4; // Modbus Slave ID
+uint8_t slaveId = 10;
+uint8_t slaveId2 = 5;
+uint8_t slaveId3 = 1;
 uint32_t baud = 4800;
 
 void preTransmission()
@@ -124,36 +125,69 @@ const RPC_Callback xcallbacks[3] = {
     {"USER_CONTROL_02", RPC_TEST_process2},
     {"USER_CONTROL_03", RPC_TEST_process3}};
 
-  uint16_t nitrogen = 0, phosphorus = 0, potassium = 0;
-  uint16_t rawTemp = 0;
-  uint16_t rawHum = 0;
+const char *getDirectionName(uint16_t degree)
+    {
+        degree %= 360; // ทำให้อยู่ในช่วง 0-359
+
+        if (degree >= 337.5 || degree < 22.5)
+            return "เหนือ";
+        else if (degree >= 22.5 && degree < 67.5)
+            return "ตะวันออกเฉียงเหนือ";
+        else if (degree >= 67.5 && degree < 112.5)
+            return "ตะวันออก";
+        else if (degree >= 112.5 && degree < 157.5)
+            return "ตะวันออกเฉียงใต้";
+        else if (degree >= 157.5 && degree < 202.5)
+            return "ใต้";
+        else if (degree >= 202.5 && degree < 247.5)
+            return "ตะวันตกเฉียงใต้";
+        else if (degree >= 247.5 && degree < 292.5)
+            return "ตะวันตก";
+        else if (degree >= 292.5 && degree < 337.5)
+            return "ตะวันตกเฉียงเหนือ";
+        return "ไม่ทราบทิศ";
+  }
+  const char* globalDirName1 = nullptr;
+  uint16_t Air1 = 0, Air2 = 0;
+  float temp = 0.0;
+  float hum = 0.0;
   uint8_t isLight = 0;
-  
-void sentder(TimerHandle_t xTimer)
-{
-    int rawValue = analogRead(SOIL_PIN);
-    float soilPercent = map(rawValue, 2300, 4095, 100, 0);
-    tbManager->sendAttributeData("SoilMoistureRaw", rawValue); // ค่าดิบ
-    tbManager->sendAttributeData("SoilMoisture", soilPercent); // ค่าเป็นเปอร์เซ็นต์
-    tbManager->sendTelemetryData("SoilMoistureRaw", rawValue); // ค่าดิบ
-    tbManager->sendTelemetryData("SoilMoisture", soilPercent); // ค่าเป็นเqปอร์เซ็นต์
+  uint16_t previousCount = 0;
+  float totalRainfall = 0.0;
+  const float resolution = 0.2;
+  uint16_t currentCount1 = 0;
+  void sentder(TimerHandle_t xTimer)
+  {
+   
+        uint16_t increment;
+        if (currentCount1 < previousCount) {
+            // กรณี overflow
+            increment = (65535 - previousCount) + currentCount1;
+        } else {
+            increment = currentCount1 - previousCount;
+        }
 
-    float temperature = rawTemp / 10.0;
-    float humidity = rawHum / 10.0;
+        float rainfall = increment * resolution;
+        totalRainfall = rainfall;  
 
-    tbManager->sendTelemetryData("Temperature", temperature);
-    tbManager->sendTelemetryData("Humidity", humidity);
+        // Serial.printf("ปริมาณน้ำฝนในช่วงเวลานี้: %.2f mm\n", totalRainfall);
+
+        previousCount = currentCount1;  // เก็บค่าไว้ใช้รอบหน้าคำนวณต่อ
+    
+    
+
+    tbManager->sendTelemetryData("Temperature", temp);
+    tbManager->sendTelemetryData("Humidity", hum);
     tbManager->sendTelemetryData("Light", isLight);
-    tbManager->sendAttributeData("Temperature", temperature);
-    tbManager->sendAttributeData("Humidity", humidity);
+    tbManager->sendTelemetryData("Airname", Air1);
+    tbManager->sendTelemetryData("Airname", globalDirName1);
+    tbManager->sendTelemetryData("Railfall", totalRainfall);
+    tbManager->sendAttributeData("Temperature", temp);
+    tbManager->sendAttributeData("Humidity", hum);
     tbManager->sendAttributeData("Light", isLight);
-
-    tbManager->sendTelemetryData("Nitrogen", nitrogen);
-    tbManager->sendTelemetryData("Phosphorus", phosphorus);
-    tbManager->sendTelemetryData("Potassium", potassium);
-    tbManager->sendAttributeData("Nitrogen", nitrogen);
-    tbManager->sendAttributeData("Phosphorus", phosphorus);
-    tbManager->sendAttributeData("Phosphorus", potassium);
+    tbManager->sendAttributeData("Airname", Air1);
+    tbManager->sendAttributeData("Airname", globalDirName1);
+    tbManager->sendAttributeData("Railfall", totalRainfall);
    
 }
 
@@ -163,127 +197,70 @@ void reader(void *pvParameters)
   modbus.begin(baud, SERIAL_8N1);
   while (1)
   {
-  uint16_t _nitrogen = 0, _phosphorus = 0, _potassium = 0;
+  uint16_t _Air1 = 0, _Air2 = 0;
   uint16_t _rawTemp = 0;
   uint16_t _rawHum = 0;
   uint16_t _buf[2];
-
+  uint16_t currentCount = 0;
   preTransmission();
-  ModbusRTUMasterError errN = modbus.readHoldingRegisters(slaveId, 13, &_nitrogen, 1);
-  ModbusRTUMasterError errP = modbus.readHoldingRegisters(slaveId, 15, &_phosphorus, 1);
-  ModbusRTUMasterError errK = modbus.readHoldingRegisters(slaveId, 16, &_potassium, 1);
+  ModbusRTUMasterError errAir1 = modbus.readHoldingRegisters(slaveId, 1, &_Air1, 1);
   ModbusRTUMasterError errTemp = modbus.readHoldingRegisters(slaveId2, 501, &_rawTemp, 1);   // register 1 = temp
-  ModbusRTUMasterError errLight = modbus.readHoldingRegisters(slaveId, 506,_buf, 2); // register 2 = light
+  ModbusRTUMasterError errLight = modbus.readHoldingRegisters(slaveId2, 506,_buf, 2); // register 2 = light
   ModbusRTUMasterError errHum = modbus.readHoldingRegisters(slaveId2, 500, &_rawHum, 1);     // register 3 = humidity
+  ModbusRTUMasterError err = modbus.readHoldingRegisters(slaveId3, 1, &currentCount, 1);
   postTransmission();
- if (errTemp == MODBUS_RTU_MASTER_SUCCESS && errLight == MODBUS_RTU_MASTER_SUCCESS && errHum == MODBUS_RTU_MASTER_SUCCESS)
-  {
-    rawTemp = _rawTemp;
-    rawHum = _rawHum;
-    uint16_t lux_high = buf[0];
-    uint16_t lux_low = buf[1];
-    uint32_t lux_value = ((uint32_t)lux_high << 16) | lux_low; // รวมเป็น 32-bit
-    uint8_t _isLight = (lux_value > 50) ? 1 : 0;
-    isLight = _isLight;
 
-  }
-  else
-  {
-    // Serial.printf("Modbus Error Temp:%d Light:%d Hum:%d\n", errTemp, errLight, errHum);
-  }
-  if (errN == MODBUS_RTU_MASTER_SUCCESS && errP == MODBUS_RTU_MASTER_SUCCESS && errK == MODBUS_RTU_MASTER_SUCCESS)
-  {
-    nitrogen = _nitrogen;
-    phosphorus = _phosphorus;
-    potassium = _potassium;
-  }
-  else
-  {
-    // Serial.printf("Modbus Error N:%d P:%d K:%d\n", errN, errP, errK);
-  }
-  
+   if (errAir1 == MODBUS_RTU_MASTER_SUCCESS)
+        {
+            Air1 = _Air1;
+            globalDirName1 = getDirectionName(_Air1);
+
+            // Serial.printf("S: %d° (%s)\n", _Air1, dirName1);
+            // Serial.println("Press q to main menu\n");
+        }
+        else
+        {
+            // Serial.printf("Modbus Error S:%d\n", errAir1);
+            // Serial.println("Press q to main menu\n");
+        }
+
+   if (errTemp == MODBUS_RTU_MASTER_SUCCESS &&
+            errLight == MODBUS_RTU_MASTER_SUCCESS &&
+            errHum == MODBUS_RTU_MASTER_SUCCESS)
+        {
+             temp = _rawTemp / 10.0;
+             hum = _rawHum / 10.0;
+            uint16_t lux_high = _buf[0];
+            uint16_t lux_low = _buf[1];
+            uint32_t lux_value = ((uint32_t)lux_high << 16) | lux_low; // รวมเป็น 32-bit
+            uint8_t _isLight = (lux_value > 50) ? 1 : 0;
+
+            // Serial.printf("Temp: %.1f C, Humidity: %.1f %%, Light: %u\n", temp_c, hum_percent, _isLight);
+            // Serial.println("Press q to main menu\n");
+        }
+        else
+        {
+            // Serial.printf("Modbus Error Temp:%d Light:%d Humidity:%d\n", errTemp, errLight, errHum);
+            // Serial.println("Press q to main menu\n");
+        }
+        
+        if (err == MODBUS_RTU_MASTER_SUCCESS) {
+          currentCount1 = currentCount;
+         }
+    else {
+        // Serial.printf("Modbus reading error: %d\n", err);
+        // ในกรณี error ค่าจะคงที่ ไม่เพิ่ม พร้อมแสดงค่าก่อนหน้า
+    }
+
     vTaskDelay(pdMS_TO_TICKS(5000));
   }
-}
-
-
-void TaskLED(void *pvParameters)
-{
-  bool previousState1 = !ledShouldBeOn1;
-  bool previousState2 = !ledShouldBeOn2;
-  bool previousState3 = !ledShouldBeOn3;
-  bool previousState4 = !ledShouldBeOn4;
-
-  prefs.begin("led_states", false); // เปิด preferences (read-write)
-
-  while (1)
-  {
-    bool currentState1;
-    bool currentState2;
-    bool currentState3;
-    bool currentState4;
-
-    if (xSemaphoreTake(xMutex, portMAX_DELAY))
-    {
-      currentState1 = ledShouldBeOn1;
-      currentState2 = ledShouldBeOn2;
-      currentState3 = ledShouldBeOn3;
-      currentState4 = ledShouldBeOn4;
-      xSemaphoreGive(xMutex);
-    } 
-
-    // เขียนค่าออกไปยัง GPIO
-    digitalWrite(LED1, currentState1 ? HIGH : LOW);
-
-    digitalWrite(LED2, currentState2 ? HIGH : LOW);
-   
-
-    digitalWrite(LED3, currentState3 ? HIGH : LOW);   
-
-    digitalWrite(LED4, currentState4 ? HIGH : LOW);
-
-    // บันทึกค่าเฉพาะเมื่อมีการเปลี่ยนแปลง
-    if (currentState1 != previousState1)
-    {
-      prefs.putBool("led1", currentState1);
-      previousState1 = currentState1;
-    }
-    if (currentState2 != previousState2)
-    {
-      prefs.putBool("led2", currentState2);
-      previousState2 = currentState2;
-    }
-    if (currentState3 != previousState3)
-    {
-      prefs.putBool("led3", currentState3);
-      previousState3 = currentState3;
-    }
-    if (currentState4 != previousState4)
-    {
-      prefs.putBool("led4", currentState4);
-      previousState4 = currentState4;
-    }
-
-    vTaskDelay(10 / portTICK_PERIOD_MS);
-  }
-
-  prefs.end(); // (จริง ๆ ไม่จำเป็นใน loop ไม่จบ แต่ใส่ไว้เผื่อ copy ไปใช้ที่อื่น)
 }
 
 // ---------------- Setup ----------------
 void setup()
 {
   Serial.begin(9600);
-  prefs.begin("led_states", true); // true = read-only
-  ledShouldBeOn1 = prefs.getBool("led1", false);
-  ledShouldBeOn2 = prefs.getBool("led2", false);
-  ledShouldBeOn3 = prefs.getBool("led3", false);
-  ledShouldBeOn4 = prefs.getBool("led4", false);
-  prefs.end();
-  pinMode(LED1, OUTPUT);
-  pinMode(LED2, OUTPUT);
-  pinMode(LED3, OUTPUT);
-  pinMode(LED4, OUTPUT);
+  delay(1000);
   xMutex = xSemaphoreCreateMutex();
 
   // pinMode(MAX485_DE, OUTPUT);
@@ -330,7 +307,6 @@ void setup()
     xTimerStart(sentDer, 0);
   // if (reaDer != NULL)
   //   xTimerStart(reaDer, 0);
-  xTaskCreate(TaskLED, "LED Task", 2048, NULL, 1, NULL);
   xTaskCreate(reader, "Read Sensor Task", 4096, NULL, 1, NULL);
 }
 

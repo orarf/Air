@@ -8,15 +8,16 @@
 #include "ModbusRTUMaster.h"
 
 // --- ค่าเริ่มต้น ---
-#define DEFAULT_WIFI_SSID "YourDefaultSSID"
-#define DEFAULT_WIFI_PASSWORD "YourDefaultPassword"
-#define DEFAULT_TB_SERVER "thingsboard.cloud"
-#define DEFAULT_TB_TOKEN "YourDefaultToken"
+#define DEFAULT_WIFI_SSID "gateway4"
+#define DEFAULT_WIFI_PASSWORD "Trinergy@2023"
+#define DEFAULT_TB_SERVER "thingsboard.tricommtha.com"
+#define DEFAULT_TB_TOKEN "jo3X29an34Esr4cSGie6"
 
 // สำหรับ Modbus
 extern ModbusRTUMaster modbus; // ต้องประกาศ global ใน main
 extern uint8_t slaveId;
 extern uint8_t slaveId2;
+extern uint8_t slaveId3;
 extern void preTransmission();
 extern void postTransmission();
 
@@ -38,7 +39,7 @@ private:
         SAVE_AND_REBOOT,
         SHOW_NPK,
         SHOW_SENSOR,
-        SHOW_SOIL   
+        SHOW_RAINFALL   
         
     };
 
@@ -56,9 +57,9 @@ private:
         Serial.println("1: Check System Status");
         Serial.println("2: Connection Settings");
         Serial.println("3: Scan for WiFi");
-        Serial.println("4: Show NPK values"); // ตัวเลือกใหม่
+        Serial.println("4: Show Air values"); // ตัวเลือกใหม่
         Serial.println("5: Show Sensor values"); // ตัวเลือกใหม่
-        Serial.println("6: Show Soil Moisture"); 
+        Serial.println("6: Show Rain Fall"); 
         Serial.print("Please enter your choice and press Enter: ");
         menuNeedsDisplay = false;
     }
@@ -134,52 +135,77 @@ private:
         Serial.print("\n>>> Press 0 and Enter to return to Main Menu <<<");
     }
 
+    const char *getDirectionName(uint16_t degree)
+    {
+        degree %= 360; // ทำให้อยู่ในช่วง 0-359
+
+        if (degree >= 337.5 || degree < 22.5)
+            return "เหนือ";
+        else if (degree >= 22.5 && degree < 67.5)
+            return "ตะวันออกเฉียงเหนือ";
+        else if (degree >= 67.5 && degree < 112.5)
+            return "ตะวันออก";
+        else if (degree >= 112.5 && degree < 157.5)
+            return "ตะวันออกเฉียงใต้";
+        else if (degree >= 157.5 && degree < 202.5)
+            return "ใต้";
+        else if (degree >= 202.5 && degree < 247.5)
+            return "ตะวันตกเฉียงใต้";
+        else if (degree >= 247.5 && degree < 292.5)
+            return "ตะวันตก";
+        else if (degree >= 292.5 && degree < 337.5)
+            return "ตะวันตกเฉียงเหนือ";
+        return "ไม่ทราบทิศ";
+    }
+
     void showNPKLoop()
     {
-        uint16_t nitrogen = 0, phosphorus = 0, potassium = 0;
-        preTransmission();
-        ModbusRTUMasterError errN = modbus.readHoldingRegisters(slaveId, 13, &nitrogen, 1);
-        ModbusRTUMasterError errP = modbus.readHoldingRegisters(slaveId, 15, &phosphorus, 1);
-        ModbusRTUMasterError errK = modbus.readHoldingRegisters(slaveId, 16, &potassium, 1);
-        postTransmission();
+        uint16_t _Air1 = 0, _Air2 = 0;
 
-        if (errN == MODBUS_RTU_MASTER_SUCCESS && errP == MODBUS_RTU_MASTER_SUCCESS && errK == MODBUS_RTU_MASTER_SUCCESS)
+        preTransmission();
+        ModbusRTUMasterError errAir1 = modbus.readHoldingRegisters(slaveId, 1, &_Air1, 1);
+        postTransmission();
+        
+        if (errAir1 == MODBUS_RTU_MASTER_SUCCESS)
         {
-            Serial.printf("N:%d P:%d K:%d\n", nitrogen, phosphorus, potassium);
+
+            const char *dirName1 = getDirectionName(_Air1);
+
+            Serial.printf("S: %d° (%s)\n", _Air1, dirName1);
             Serial.println("Press q to main menu\n");
         }
         else
         {
-            Serial.printf("Modbus Error N:%d P:%d K:%d\n", errN, errP, errK);
+            Serial.printf("Modbus Error S:%d\n", errAir1);
             Serial.println("Press q to main menu\n");
         }
     }
-
+        uint16_t _rawTemp = 0;
+        uint16_t _rawHum = 0;
+        uint16_t _buf[2];
     void showSensorLoop()
     {
-        uint16_t rawTemp = 0;
-        uint16_t rawLight = 0;
-        uint16_t rawHum = 0;
-
+        uint16_t _rawTemp = 0;
+        uint16_t _rawHum = 0;
+        uint16_t _buf[2];
         preTransmission();
-        ModbusRTUMasterError errTemp = modbus.readHoldingRegisters(slaveId2, 1, &rawTemp, 1);   // register 1 = temp
-        ModbusRTUMasterError errLight = modbus.readHoldingRegisters(slaveId2, 2, &rawLight, 1); // register 2 = light
-        ModbusRTUMasterError errHum = modbus.readHoldingRegisters(slaveId2, 0, &rawHum, 1);     // register 3 = humidity
+        ModbusRTUMasterError errTemp = modbus.readHoldingRegisters(slaveId2, 501, &_rawTemp, 1); // register 1 = temp
+        ModbusRTUMasterError errLight = modbus.readHoldingRegisters(slaveId2, 506, _buf, 2);      // register 2 = light
+        ModbusRTUMasterError errHum = modbus.readHoldingRegisters(slaveId2, 500, &_rawHum, 1);   // register 3 = humidity
         postTransmission();
 
         if (errTemp == MODBUS_RTU_MASTER_SUCCESS &&
             errLight == MODBUS_RTU_MASTER_SUCCESS &&
             errHum == MODBUS_RTU_MASTER_SUCCESS)
         {
-            // สมมติสูตรการแปลง:
-            // อุณหภูมิ: raw / 10 -> °C
-            // ความชื้น: raw / 10 -> %
-            // แสง: raw * 1 -> lux (ตรงตัว)
-            float temperature = rawTemp / 10.0;
-            float humidity = rawHum / 10.0;
-            float light = rawLight * 1.0; // ปรับตาม datasheet
+            float temp_c = _rawTemp / 10.0;
+            float hum_percent = _rawHum / 10.0;
+            uint16_t lux_high = _buf[0];
+            uint16_t lux_low = _buf[1];
+            uint32_t lux_value = ((uint32_t)lux_high << 16) | lux_low; // รวมเป็น 32-bit
+            uint8_t _isLight = (lux_value > 50) ? 1 : 0;
 
-            Serial.printf("Temp: %.1f C, Humidity: %.1f %%, Light: %.0f lux\n", temperature, humidity, light);
+            Serial.printf("Temp: %.1f C, Humidity: %.1f %%, Light: %u\n", temp_c, hum_percent, _isLight);
             Serial.println("Press q to main menu\n");
         }
         else
@@ -189,14 +215,42 @@ private:
         }
     }
 
-    void showSoilLoop()
-    {
-        int rawValue = analogRead(34); // ✅ ใช้ GPIO34 (ADC1_CH6)
-        float percent = map(rawValue, 2300, 4095, 100, 0);
+   // ตัวแปร global เก็บค่า previous pulse count
+uint16_t previousCount = 0;
+// ตัวแปร global เก็บค่า rainfall สะสมโดยรวม
+float totalRainfall = 0.0;
+// ค่าความละเอียดน้ำฝน (mm/pulse)
+const float resolution = 0.2;
 
-        Serial.printf("Soil Moisture Raw: %d, %.1f %%\n", rawValue, percent);
+void showRainfall() {
+    uint16_t currentCount = 0;
+    preTransmission();
+    ModbusRTUMasterError err = modbus.readHoldingRegisters(slaveId3, 1, &currentCount, 1);
+    postTransmission();
+
+    if (err == MODBUS_RTU_MASTER_SUCCESS) {
+        uint16_t increment;
+        if (currentCount < previousCount) {
+            // กรณี overflow
+            increment = (65535 - previousCount) + currentCount;
+        } else {
+            increment = currentCount - previousCount;
+        }
+
+        float rainfall = increment * resolution;
+        totalRainfall = rainfall;  // บวกเพิ่มปริมาณฝนสะสม
+
+        Serial.printf("ปริมาณน้ำฝนในช่วงเวลานี้: %.2f mm\n", totalRainfall);
         Serial.println("Press q to main menu\n");
+
+        previousCount = currentCount;  // เก็บค่าไว้ใช้รอบหน้าคำนวณต่อ
     }
+    else {
+        Serial.printf("Modbus reading error: %d\n", err);
+        Serial.println("Press q to main menu\n");
+        // ในกรณี error ค่าจะคงที่ ไม่เพิ่ม พร้อมแสดงค่าก่อนหน้า
+    }
+}
     
     void cliTask() {
         while(true){
@@ -210,7 +264,7 @@ private:
                         else if(choice=="3") currentState = SCAN_WIFI;
                         else if(choice=="4") currentState = SHOW_NPK;
                         else if(choice=="5") currentState = SHOW_SENSOR;
-                        else if(choice=="6") currentState = SHOW_SOIL;
+                        else if(choice=="6") currentState = SHOW_RAINFALL;
                         else if(choice.length()>0) Serial.println("Invalid choice");
                         menuNeedsDisplay = true;
                     }
@@ -293,7 +347,7 @@ private:
                     prefs->end();
                     Serial.println("Saved. Rebooting in 3s...");
                     vTaskDelay(pdMS_TO_TICKS(3000));
-                    ESP.restart();
+                    // ESP.restart();
                     break;
 
                 case SHOW_NPK:
@@ -328,8 +382,8 @@ private:
                     vTaskDelay(pdMS_TO_TICKS(1000)); // delay 1 วิ ก่อนอ่านค่าใหม่
                     break;
 
-                case SHOW_SOIL:
-                    showSoilLoop();
+                case SHOW_RAINFALL:
+                    showRainfall();
                     if (Serial.available() > 0)
                     {
                         char cmd = Serial.read();
@@ -352,17 +406,57 @@ private:
 
 public:
     CommandLineManager(TBmanager* tb, Preferences* p):tbManager(tb), prefs(p){}
-    void loadSettings(){
-        prefs->begin("conn-info", true);
-        tempSsid = prefs->getString("ssid", DEFAULT_WIFI_SSID);
-        tempPass = prefs->getString("password", DEFAULT_WIFI_PASSWORD);
-        tempServer = prefs->getString("server", DEFAULT_TB_SERVER);
-        tempToken = prefs->getString("token", DEFAULT_TB_TOKEN);
-        prefs->end();
+    
+
+    void loadSettings() {
+    prefs->begin("conn-info", false); // เปิดแบบเขียนได้
+
+    bool updated = false; // ใช้ตรวจว่ามีการอัปเดตค่าใหม่หรือไม่
+
+    // === SSID ===
+    if (prefs->isKey("ssid")) {
+        tempSsid = prefs->getString("ssid");
+    } else {
+        tempSsid = DEFAULT_WIFI_SSID;
+        prefs->putString("ssid", DEFAULT_WIFI_SSID);
+        updated = true;
     }
 
+    // === PASSWORD ===
+    if (prefs->isKey("password")) {
+        tempPass = DEFAULT_WIFI_PASSWORD;
+    } else {
+        tempPass = DEFAULT_WIFI_PASSWORD;
+        prefs->putString("password", DEFAULT_WIFI_PASSWORD);
+        updated = true;
+    }
+
+    // === SERVER ===
+    if (prefs->isKey("server")) {
+        tempServer = prefs->getString("server");
+    } else {
+        tempServer = DEFAULT_TB_SERVER;
+        prefs->putString("server", DEFAULT_TB_SERVER);
+        updated = true;
+    }
+
+    // === TOKEN ===
+    if (prefs->isKey("token")) {
+        tempToken = prefs->getString("token");
+    } else {
+        tempToken = DEFAULT_TB_TOKEN;
+        prefs->putString("token", DEFAULT_TB_TOKEN);
+        updated = true;
+    }
+
+    prefs->end();
+
+    if (updated) {
+        Serial.println("[INFO] Default settings were missing. Saved defaults to Preferences.");
+    }
+}
     void begin(){
-        xTaskCreate(taskWrapper,"CLI_Task", 1024*2,this,1,NULL);
+        xTaskCreate(taskWrapper,"CLI_Task", 1024*4,this,1,NULL);
     }
 
     bool shouldEnterMenuOnBoot(unsigned long waitTime){
