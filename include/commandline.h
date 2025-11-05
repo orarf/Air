@@ -18,6 +18,7 @@ extern ModbusRTUMaster modbus; // ต้องประกาศ global ใน m
 extern uint8_t slaveId;
 extern uint8_t slaveId2;
 extern uint8_t slaveId3;
+extern uint8_t slaveId4;
 extern void preTransmission();
 extern void postTransmission();
 
@@ -39,7 +40,8 @@ private:
         SAVE_AND_REBOOT,
         SHOW_NPK,
         SHOW_SENSOR,
-        SHOW_RAINFALL   
+        SHOW_RAINFALL,
+        SHOW_WIND
         
     };
 
@@ -60,6 +62,7 @@ private:
         Serial.println("4: Show Air values"); // ตัวเลือกใหม่
         Serial.println("5: Show Sensor values"); // ตัวเลือกใหม่
         Serial.println("6: Show Rain Fall"); 
+        Serial.println("7: Show Wind Speed");
         Serial.print("Please enter your choice and press Enter: ");
         menuNeedsDisplay = false;
     }
@@ -251,6 +254,22 @@ void showRainfall() {
         // ในกรณี error ค่าจะคงที่ ไม่เพิ่ม พร้อมแสดงค่าก่อนหน้า
     }
 }
+
+void showWind() {
+    uint16_t _WindRaw = 0; 
+    preTransmission();
+    ModbusRTUMasterError errWind = modbus.readHoldingRegisters(slaveId4, 0, &_WindRaw, 1);
+    postTransmission();
+    if (errWind == MODBUS_RTU_MASTER_SUCCESS) {
+       float wind_mps = _WindRaw / 10.0; // จะได้ m/s จริง
+       Serial.printf("Wind Speed: %.1f m/s\n", wind_mps);
+       Serial.println("Press q to main menu\n");
+    } else {
+      Serial.printf("Modbus Error Wind:%d\n", errWind);
+      Serial.println("Press q to main menu\n");
+    }
+}
+
     
     void cliTask() {
         while(true){
@@ -265,6 +284,7 @@ void showRainfall() {
                         else if(choice=="4") currentState = SHOW_NPK;
                         else if(choice=="5") currentState = SHOW_SENSOR;
                         else if(choice=="6") currentState = SHOW_RAINFALL;
+                        else if(choice=="7") currentState = SHOW_WIND;
                         else if(choice.length()>0) Serial.println("Invalid choice");
                         menuNeedsDisplay = true;
                     }
@@ -384,6 +404,20 @@ void showRainfall() {
 
                 case SHOW_RAINFALL:
                     showRainfall();
+                    if (Serial.available() > 0)
+                    {
+                        char cmd = Serial.read();
+                        if (cmd == 'q')
+                        {
+                            currentState = MAIN_MENU;
+                            menuNeedsDisplay = true;
+                        }
+                    }
+                    vTaskDelay(pdMS_TO_TICKS(1000)); // delay 1 วิ
+                    break;
+
+                case SHOW_WIND:
+                    showWind();
                     if (Serial.available() > 0)
                     {
                         char cmd = Serial.read();

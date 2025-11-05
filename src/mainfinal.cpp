@@ -26,6 +26,7 @@ ModbusRTUMaster modbus(RS485);
 uint8_t slaveId = 10;
 uint8_t slaveId2 = 5;
 uint8_t slaveId3 = 1;
+uint8_t slaveId4 = 15;
 uint32_t baud = 4800;
 
 void preTransmission()
@@ -156,6 +157,7 @@ const char *getDirectionName(uint16_t degree)
   float totalRainfall = 0.0;
   const float resolution = 0.2;
   uint16_t currentCount1 = 0;
+  float wind_mps = 0.0;
   void sentder(TimerHandle_t xTimer)
   {
    
@@ -182,12 +184,14 @@ const char *getDirectionName(uint16_t degree)
     tbManager->sendTelemetryData("Airname", Air1);
     tbManager->sendTelemetryData("Airname", globalDirName1);
     tbManager->sendTelemetryData("Railfall", totalRainfall);
+    tbManager->sendTelemetryData("WindSpeed", wind_mps);
     tbManager->sendAttributeData("Temperature", temp);
     tbManager->sendAttributeData("Humidity", hum);
     tbManager->sendAttributeData("Light", isLight);
     tbManager->sendAttributeData("Airname", Air1);
     tbManager->sendAttributeData("Airname", globalDirName1);
     tbManager->sendAttributeData("Railfall", totalRainfall);
+    tbManager->sendAttributeData("WindSpeed", wind_mps);
    
 }
 
@@ -202,7 +206,9 @@ void reader(void *pvParameters)
   uint16_t _rawHum = 0;
   uint16_t _buf[2];
   uint16_t currentCount = 0;
+  uint16_t _WindRaw = 0;
   preTransmission();
+  ModbusRTUMasterError errWind = modbus.readHoldingRegisters(slaveId4, 0, &_WindRaw, 1);
   ModbusRTUMasterError errAir1 = modbus.readHoldingRegisters(slaveId, 1, &_Air1, 1);
   ModbusRTUMasterError errTemp = modbus.readHoldingRegisters(slaveId2, 501, &_rawTemp, 1);   // register 1 = temp
   ModbusRTUMasterError errLight = modbus.readHoldingRegisters(slaveId2, 506,_buf, 2); // register 2 = light
@@ -250,6 +256,13 @@ void reader(void *pvParameters)
     else {
         // Serial.printf("Modbus reading error: %d\n", err);
         // ในกรณี error ค่าจะคงที่ ไม่เพิ่ม พร้อมแสดงค่าก่อนหน้า
+    }
+
+    if (errWind == MODBUS_RTU_MASTER_SUCCESS) {
+       wind_mps = _WindRaw / 10.0; // จะได้ m/s จริง
+      // Serial.printf("Wind Speed: %.1f m/s\n", wind_mps);
+    } else {
+      // Serial.printf("Modbus Error Wind:%d\n", errWind);
     }
 
     vTaskDelay(pdMS_TO_TICKS(5000));
