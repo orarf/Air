@@ -158,6 +158,7 @@ const char *getDirectionName(uint16_t degree)
   const float resolution = 0.2;
   uint16_t currentCount1 = 0;
   float wind_mps = 0.0;
+  uint32_t lux_value = 0;
   void sentder(TimerHandle_t xTimer)
   {
    
@@ -185,6 +186,7 @@ const char *getDirectionName(uint16_t degree)
     tbManager->sendTelemetryData("Airname", globalDirName1);
     tbManager->sendTelemetryData("Railfall", totalRainfall);
     tbManager->sendTelemetryData("WindSpeed", wind_mps);
+    tbManager->sendTelemetryData("lux_value", lux_value);
     tbManager->sendAttributeData("Temperature", temp);
     tbManager->sendAttributeData("Humidity", hum);
     tbManager->sendAttributeData("Light", isLight);
@@ -192,6 +194,7 @@ const char *getDirectionName(uint16_t degree)
     tbManager->sendAttributeData("Airname", globalDirName1);
     tbManager->sendAttributeData("Railfall", totalRainfall);
     tbManager->sendAttributeData("WindSpeed", wind_mps);
+    tbManager->sendAttributeData("lux_value", lux_value);
    
 }
 
@@ -238,8 +241,9 @@ void reader(void *pvParameters)
              hum = _rawHum / 10.0;
             uint16_t lux_high = _buf[0];
             uint16_t lux_low = _buf[1];
-            uint32_t lux_value = ((uint32_t)lux_high << 16) | lux_low; // รวมเป็น 32-bit
+            lux_value = ((uint32_t)lux_high << 16) | lux_low; // รวมเป็น 32-bit
             uint8_t _isLight = (lux_value > 50) ? 1 : 0;
+            isLight = _isLight;
 
             // Serial.printf("Temp: %.1f C, Humidity: %.1f %%, Light: %u\n", temp_c, hum_percent, _isLight);
             // Serial.println("Press q to main menu\n");

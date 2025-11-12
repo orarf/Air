@@ -367,7 +367,7 @@ void showWind() {
                     prefs->end();
                     Serial.println("Saved. Rebooting in 3s...");
                     vTaskDelay(pdMS_TO_TICKS(3000));
-                    // ESP.restart();
+                    ESP.restart();
                     break;
 
                 case SHOW_NPK:
